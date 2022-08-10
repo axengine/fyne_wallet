@@ -39,6 +39,7 @@ func NewFyneWallet(a fyne.App, w fyne.Window) *FyneWallet {
 		d:           dao.New("fynewallet.db"),
 	}
 	wl.init()
+	wl.d.Sync2()
 	wl.handleMain(a, w)
 	return wl
 }
@@ -78,7 +79,7 @@ func (wl *FyneWallet) handleMain(a fyne.App, w fyne.Window) fyne.CanvasObject {
 
 func (wl *FyneWallet) handleNetworks(a fyne.App, w fyne.Window) fyne.CanvasObject {
 	var (
-		page, size = 1, 10
+		page, size = 1, 100
 	)
 	_, items, err := wl.d.ListNetwork(page, size)
 	if err != nil {
@@ -235,9 +236,149 @@ func (wl *FyneWallet) handleAccounts(a fyne.App, w fyne.Window) fyne.CanvasObjec
 }
 
 func (wl *FyneWallet) handleAssets(a fyne.App, w fyne.Window) fyne.CanvasObject {
-	label := container.NewCenter(widget.NewLabel("assets manage"))
-	wl.content.Objects = []fyne.CanvasObject{label}
-	wl.content.Refresh()
+	var (
+		page, size = 1, 100
+	)
+	_, items, err := wl.d.ListAsset(page, size)
+	if err != nil {
+		wl.showErr(err)
+		return nil
+	}
+
+	tips := widget.NewLabel("Manage Asset ERC20 ONLY")
+
+	assetId := widget.NewEntry()
+	assetId.Disable()
+	contract := widget.NewEntry()
+	chainId := widget.NewEntry()
+	symbol := widget.NewEntry()
+	decimals := widget.NewEntry()
+
+	form := &widget.Form{}
+	form.Append("Id", assetId)
+	form.Append("Contract", contract)
+	form.Append("ChainId", chainId)
+	form.Append("Symbol", symbol)
+	form.Append("Decimals", decimals)
+
+	delButton := widget.NewButton("DEL", func() {
+		d := dialog.NewConfirm("Sure", "deleted", func(b bool) {
+			if !b {
+				return
+			}
+			id, _ := strconv.ParseInt(assetId.Text, 10, 64)
+			if err := wl.d.Delete(nil, id, &model.Asset{}); err != nil {
+				wl.showErr(err)
+				return
+			}
+		}, w)
+		d.Show()
+	})
+
+	updateButton := widget.NewButton("UPDATE", func() {
+		d := dialog.NewConfirm("Sure", "updated", func(b bool) {
+			if !b {
+				return
+			}
+			id, _ := strconv.ParseInt(assetId.Text, 10, 64)
+
+			cid, err := strconv.ParseInt(strings.TrimSpace(chainId.Text), 10, 64)
+			if err != nil {
+				wl.showErr(err)
+				return
+			}
+
+			decimalsInt, err := strconv.ParseInt(strings.TrimSpace(decimals.Text), 10, 64)
+			if err != nil {
+				wl.showErr(err)
+				return
+			}
+
+			if err := wl.d.Update(nil, id, &model.Asset{
+				Contract: strings.TrimSpace(contract.Text),
+				ChainId:  cid,
+				Symbol:   strings.TrimSpace(symbol.Text),
+				Decimals: int(decimalsInt),
+			}); err != nil {
+				wl.showErr(err)
+				return
+			}
+		}, w)
+		d.Show()
+	})
+
+	vbox := container.NewVBox(tips, form, container.NewHSplit(delButton, updateButton))
+
+	list := widget.NewList(
+		func() int {
+			return len(items)
+		},
+		func() fyne.CanvasObject {
+			return container.NewHBox(widget.NewIcon(theme.DocumentIcon()), widget.NewLabel("Template Object"))
+		},
+		func(id widget.ListItemID, item fyne.CanvasObject) {
+			item.(*fyne.Container).Objects[1].(*widget.Label).SetText(items[id].Symbol)
+		},
+	)
+	list.OnSelected = func(id widget.ListItemID) {
+		tips.SetText(tips.Text + ":" + items[id].Symbol)
+		assetId.SetText(fmt.Sprintf("%d", items[id].Id))
+		contract.SetText(items[id].Contract)
+		chainId.SetText(fmt.Sprintf("%d", items[id].ChainId))
+		symbol.SetText(items[id].Symbol)
+		decimals.SetText(fmt.Sprintf("%d", items[id].Decimals))
+	}
+	list.OnUnselected = func(id widget.ListItemID) {
+		tips.SetText("Please Add Asset")
+	}
+	if len(items) > 0 {
+		list.Select(0)
+	}
+
+	addButton := widget.NewButton("Add", func() {
+		var (
+			contract, chainId, symbol, decimals = widget.NewEntry(), widget.NewEntry(), widget.NewEntry(), widget.NewEntry()
+		)
+		items := []*widget.FormItem{
+			widget.NewFormItem("Contract", contract),
+			widget.NewFormItem("ChainId", chainId),
+			widget.NewFormItem("Symbol", symbol),
+			widget.NewFormItem("Decimals", decimals),
+		}
+
+		dialog.ShowForm("Add Network", "Add", "Cancel", items, func(b bool) {
+			if !b {
+				return
+			}
+
+			cid, err := strconv.ParseInt(strings.TrimSpace(chainId.Text), 10, 64)
+			if err != nil {
+				wl.showErr(err)
+				return
+			}
+			decimalsInt, err := strconv.ParseInt(strings.TrimSpace(decimals.Text), 10, 64)
+			if err != nil {
+				wl.showErr(err)
+				return
+			}
+			if err := wl.d.Insert(nil, &model.Asset{
+				Contract: strings.TrimSpace(contract.Text),
+				ChainId:  cid,
+				Symbol:   strings.TrimSpace(symbol.Text),
+				Decimals: int(decimalsInt),
+			}); err != nil {
+				wl.showErr(err)
+				return
+			}
+		}, wl.window)
+	})
+
+	left := container.NewVSplit(list, addButton)
+	left.SetOffset(0.9)
+
+	c := container.NewHSplit(left, container.NewMax(vbox))
+	c.Offset = 0.2
+	wl.showContent(c)
 	return nil
 }
 
