@@ -39,7 +39,6 @@ func NewFyneWallet(a fyne.App, w fyne.Window) *FyneWallet {
 		d:           dao.New("fynewallet.db"),
 	}
 	wl.init()
-	wl.d.Sync2()
 	wl.handleMain(a, w)
 	return wl
 }
@@ -145,8 +144,12 @@ func (wl *FyneWallet) handleNetworks(a fyne.App, w fyne.Window) fyne.CanvasObjec
 		}, w)
 		d.Show()
 	})
-
-	vbox := container.NewVBox(tips, form, container.NewHSplit(delButton, updateButton))
+	var vbox = new(fyne.Container)
+	if len(items) == 0 {
+		vbox = container.NewVBox(tips, widget.NewLabel("Please Add Network"))
+	} else {
+		vbox = container.NewVBox(tips, form, container.NewHSplit(delButton, updateButton))
+	}
 
 	list := widget.NewList(
 		func() int {
