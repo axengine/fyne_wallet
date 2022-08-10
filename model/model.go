@@ -6,7 +6,7 @@ type Network struct {
 	Id        int       `xorm:"NOT NULL PK AUTOINCR INT(11)"`
 	Name      string    `xorm:"VARCHAR(255) COMMENT('链名称')"`
 	Rpc       string    `xorm:"VARCHAR(255) COMMENT('Rpc')"`
-	ChainId   int       `xorm:"NOT NULL UNIQUE INT(11)"`
+	ChainId   int64     `xorm:"NOT NULL UNIQUE INT(20)"`
 	Symbol    string    `xorm:"VARCHAR(16) COMMENT('货币符号')"`
 	Explorer  string    `xorm:"VARCHAR(255) COMMENT('区块浏览器')"`
 	CreatedAt time.Time `xorm:"created"`

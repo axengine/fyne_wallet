@@ -91,3 +91,23 @@ func (d *Dao) Delete(sess *xorm.Session, id int64, bean interface{}) error {
 	}
 	return nil
 }
+
+func (d *Dao) Update(sess *xorm.Session, id int64, bean interface{}) error {
+	var (
+		affected int64
+		err      error
+	)
+	if sess != nil {
+		affected, err = sess.ID(id).AllCols().Update(bean)
+	} else {
+		affected, err = d.orm.ID(id).AllCols().Update(bean)
+	}
+
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return errors.Errorf("wrong affected:%d", affected)
+	}
+	return nil
+}

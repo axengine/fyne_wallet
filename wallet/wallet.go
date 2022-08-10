@@ -3,10 +3,14 @@ package wallet
 import (
 	"fmt"
 	"fwallet/dao"
+	"fwallet/model"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"strconv"
+	"strings"
 )
 
 type function struct {
@@ -73,57 +77,75 @@ func (wl *FyneWallet) handleMain(a fyne.App, w fyne.Window) fyne.CanvasObject {
 }
 
 func (wl *FyneWallet) handleNetworks(a fyne.App, w fyne.Window) fyne.CanvasObject {
-	_, items, err := wl.d.ListNetwork(1, 10)
+	var (
+		page, size = 1, 10
+	)
+	_, items, err := wl.d.ListNetwork(page, size)
 	if err != nil {
-		label := container.NewCenter(widget.NewLabel(err.Error()))
-		wl.content.Objects = []fyne.CanvasObject{label}
-		wl.content.Refresh()
+		wl.showErr(err)
 		return nil
 	}
 
 	tips := widget.NewLabel("Manage Network")
 
-	//name := widget.NewEntry()
-	//name.SetPlaceHolder("blockchain network name")
-	//
-	//chainId := widget.NewLabel("0")
-	//rpc := widget.NewEntry()
-	//rpc.SetPlaceHolder("rpc url")
-	//
-	//symbol := widget.NewEntry()
-	//symbol.SetPlaceHolder("asset symbol")
-	//
-	//explorer := widget.NewEntry()
-	//explorer.SetPlaceHolder("explorer url")
-	//
-	//form := &widget.Form{
-	//	Items: []*widget.FormItem{
-	//		{Text: "Name", Widget: name, HintText: "Your full name"},
-	//		{Text: "ChainId", Widget: chainId, HintText: "A valid email address"},
-	//		{Text: "Rpc", Widget: rpc, HintText: "A valid email address"},
-	//		{Text: "Symbol", Widget: symbol, HintText: "A valid email address"},
-	//		{Text: "Explorer", Widget: explorer, HintText: "A valid email address"},
-	//	},
-	//	OnCancel: func() {
-	//		fmt.Println("Cancelled")
-	//	},
-	//	OnSubmit: func() {
-	//		fmt.Println("Form submitted")
-	//		fyne.CurrentApp().SendNotification(&fyne.Notification{
-	//			Title: "Form for: " + name.Text,
-	//			//Content: largeText.Text,
-	//			Content: "xxxxxxxxxxxxxxx",
-	//		})
-	//	},
-	//}
-	form := &widget.Form{
-		OnCancel: func() {
-			fmt.Println("Cancelled")
-		},
-		OnSubmit: func() {
-		},
-	}
-	vbox := container.NewVBox(tips, form)
+	networkId := widget.NewEntry()
+	networkId.Disable()
+	name := widget.NewEntry()
+	rpc := widget.NewEntry()
+	chainId := widget.NewEntry()
+	symbol := widget.NewEntry()
+	explorer := widget.NewEntry()
+
+	form := &widget.Form{}
+	form.Append("Id", networkId)
+	form.Append("Name", name)
+	form.Append("RPC", rpc)
+	form.Append("ChainId", chainId)
+	form.Append("Symbol", symbol)
+	form.Append("Explorer", explorer)
+
+	delButton := widget.NewButton("DEL", func() {
+		d := dialog.NewConfirm("Sure", "deleted", func(b bool) {
+			if !b {
+				return
+			}
+			id, _ := strconv.ParseInt(networkId.Text, 10, 64)
+			if err := wl.d.Delete(nil, id, &model.Network{}); err != nil {
+				wl.showErr(err)
+				return
+			}
+		}, w)
+		d.Show()
+	})
+
+	updateButton := widget.NewButton("UPDATE", func() {
+		d := dialog.NewConfirm("Sure", "updated", func(b bool) {
+			if !b {
+				return
+			}
+			id, _ := strconv.ParseInt(networkId.Text, 10, 64)
+
+			cid, err := strconv.ParseInt(strings.TrimSpace(chainId.Text), 10, 64)
+			if err != nil {
+				wl.showErr(err)
+				return
+			}
+
+			if err := wl.d.Update(nil, id, &model.Network{
+				Name:     strings.TrimSpace(name.Text),
+				Rpc:      strings.TrimSpace(rpc.Text),
+				ChainId:  cid,
+				Symbol:   strings.TrimSpace(symbol.Text),
+				Explorer: strings.TrimSpace(explorer.Text),
+			}); err != nil {
+				wl.showErr(err)
+				return
+			}
+		}, w)
+		d.Show()
+	})
+
+	vbox := container.NewVBox(tips, form, container.NewHSplit(delButton, updateButton))
 
 	list := widget.NewList(
 		func() int {
@@ -137,34 +159,72 @@ func (wl *FyneWallet) handleNetworks(a fyne.App, w fyne.Window) fyne.CanvasObjec
 		},
 	)
 	list.OnSelected = func(id widget.ListItemID) {
-		tips.SetText(items[id].Name)
-
-		name := widget.NewEntry()
+		tips.SetText(tips.Text + ":" + items[id].Name)
+		networkId.SetText(fmt.Sprintf("%d", items[id].Id))
 		name.SetText(items[id].Name)
-		rpc := widget.NewEntry()
 		rpc.SetText(items[id].Rpc)
-		chainId := widget.NewLabel(fmt.Sprintf("%d", items[id].ChainId))
-		symbol := widget.NewEntry()
+		chainId.SetText(fmt.Sprintf("%d", items[id].ChainId))
 		symbol.SetText(items[id].Symbol)
-		explorer := widget.NewEntry()
 		explorer.SetText(items[id].Explorer)
-
-		form.Append("name", name)
-		form.Append("rpc", rpc)
-		form.Append("chainId", chainId)
-		form.Append("symbol", symbol)
-		form.Append("explorer", explorer)
 	}
 	list.OnUnselected = func(id widget.ListItemID) {
-		tips.SetText("Select An Item From The List")
+		tips.SetText("Please Add Network")
+	}
+	if len(items) > 0 {
+		list.Select(0)
 	}
 
-	c := container.NewHSplit(list, container.NewMax(vbox))
+	addButton := widget.NewButton("Add", func() {
+		var (
+			name, rpc, chainId, symbol, explorer = widget.NewEntry(), widget.NewEntry(), widget.NewEntry(), widget.NewEntry(), widget.NewEntry()
+		)
+		items := []*widget.FormItem{
+			widget.NewFormItem("Name", name),
+			widget.NewFormItem("RPC", rpc),
+			widget.NewFormItem("ChainId", chainId),
+			widget.NewFormItem("Symbol", symbol),
+			widget.NewFormItem("Explorer", explorer),
+		}
+
+		dialog.ShowForm("Add Network", "Add", "Cancel", items, func(b bool) {
+			if !b {
+				return
+			}
+
+			cid, err := strconv.ParseInt(strings.TrimSpace(chainId.Text), 10, 64)
+			if err != nil {
+				wl.showErr(err)
+				return
+			}
+			if err := wl.d.Insert(nil, &model.Network{
+				Name:     strings.TrimSpace(name.Text),
+				Rpc:      strings.TrimSpace(rpc.Text),
+				ChainId:  cid,
+				Symbol:   strings.TrimSpace(symbol.Text),
+				Explorer: strings.TrimSpace(explorer.Text),
+			}); err != nil {
+				wl.showErr(err)
+				return
+			}
+		}, wl.window)
+	})
+
+	left := container.NewVSplit(list, addButton)
+	left.SetOffset(0.9)
+
+	c := container.NewHSplit(left, container.NewMax(vbox))
 	c.Offset = 0.2
+	wl.showContent(c)
+	return nil
+}
+
+func (wl *FyneWallet) showContent(c fyne.CanvasObject) {
 	wl.content.Objects = []fyne.CanvasObject{c}
 	wl.content.Refresh()
-	return nil
+}
 
+func (wl *FyneWallet) showErr(err error) {
+	dialog.NewError(err, wl.window).Show()
 }
 
 func (wl *FyneWallet) handleAccounts(a fyne.App, w fyne.Window) fyne.CanvasObject {
